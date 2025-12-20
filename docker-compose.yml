@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  k8s-policy-agent:
+    build: .
+    container_name: k8s-policy-agent
+    environment:
+      - K8S_POLICY_GEMINI_API_KEY=${K8S_POLICY_GEMINI_API_KEY:-}
+      - K8S_POLICY_GEMINI_MODEL=${K8S_POLICY_GEMINI_MODEL:-gemini-2.0-flash}
+      - K8S_POLICY_KUBECONFIG=${K8S_POLICY_KUBECONFIG:-}
+      - K8S_POLICY_NAMESPACE=${K8S_POLICY_NAMESPACE:-default}
+      - K8S_POLICY_GIT_REPO_URL=${K8S_POLICY_GIT_REPO_URL:-}
+      - K8S_POLICY_GIT_BRANCH=${K8S_POLICY_GIT_BRANCH:-main}
+      - K8S_POLICY_GIT_POLICIES_PATH=${K8S_POLICY_GIT_POLICIES_PATH:-policies/}
+      - K8S_POLICY_DRY_RUN=${K8S_POLICY_DRY_RUN:-true}
+      - K8S_POLICY_MOCK_MODE=${K8S_POLICY_MOCK_MODE:-false}
+      - K8S_POLICY_AUTO_APPROVE=${K8S_POLICY_AUTO_APPROVE:-false}
+    volumes:
+      - ./policies:/app/policies
+      - ${HOME}/.kube:/home/agent/.kube:ro
+      - ${HOME}/.gitconfig:/home/agent/.gitconfig:ro
+    working_dir: /app
+    command: ["pipeline", "--help"]
+
+  # Development service with live reload
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: k8s-policy-agent-dev
+    environment:
+      - K8S_POLICY_GEMINI_API_KEY=${K8S_POLICY_GEMINI_API_KEY:-}
+      - K8S_POLICY_MOCK_MODE=true
+      - K8S_POLICY_DRY_RUN=true
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: ["--help"]
+    profiles:
+      - dev

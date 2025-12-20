@@ -1,0 +1,86 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "k8s-policy-agent"
+version = "0.1.0"
+description = "AI-powered Kubernetes NetworkPolicy generator and validator using Gemini and DeepEval"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "lord-dubious" }
+]
+keywords = [
+    "kubernetes",
+    "network-policy",
+    "security",
+    "gitops",
+    "ai",
+    "gemini",
+    "deepeval"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: System :: Systems Administration"
+]
+dependencies = [
+    "google-generativeai>=0.8.0",
+    "kubernetes>=29.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "structlog>=24.0.0",
+    "gitpython>=3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+    "deepeval>=1.0.0",
+]
+
+[project.scripts]
+k8s-policy = "k8s_policy_agent.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/lord-dubious/k8s-policy-agent"
+Repository = "https://github.com/lord-dubious/k8s-policy-agent"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/k8s_policy_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-v --tb=short"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
