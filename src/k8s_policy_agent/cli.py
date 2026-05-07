@@ -9,15 +9,15 @@ from typing import Annotated
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 from rich.syntax import Syntax
+from rich.table import Table
 
-from k8s_policy_agent.models import PolicyConfig
 from k8s_policy_agent.agent import PolicyAgent
+from k8s_policy_agent.models import PolicyConfig
 
 app = typer.Typer(
     name="k8s-policy",
-    help="AI-powered Kubernetes NetworkPolicy generator and validator",
+    help="Kubernetes NetworkPolicy generator and validator",
     add_completion=False,
 )
 console = Console()
@@ -229,6 +229,7 @@ def evaluate(
 
     # Parse YAML and evaluate
     import yaml as yaml_lib
+
     from k8s_policy_agent.models import NetworkPolicySpec, PodSelector
 
     data = yaml_lib.safe_load(yaml_content)
@@ -316,6 +317,7 @@ def apply(
 
     # Parse and create policy spec
     import yaml as yaml_lib
+
     from k8s_policy_agent.models import NetworkPolicySpec, PodSelector
 
     data = yaml_lib.safe_load(yaml_content)
@@ -349,7 +351,7 @@ def apply(
 
         except ValueError as e:
             console.print(f"[red]Failed to apply policy: {e}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
         finally:
             await agent.cleanup()
 

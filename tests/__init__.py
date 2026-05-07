@@ -1,7 +1,5 @@
 """Tests for k8s_policy_agent package initialization."""
 
-import pytest
-
 
 def test_package_version() -> None:
     """Test package version is defined."""
@@ -42,13 +40,13 @@ def test_package_exports() -> None:
 def test_factory_functions() -> None:
     """Test factory functions create instances."""
     from k8s_policy_agent import (
+        PolicyConfig,
         create_config,
-        create_traffic_analyzer,
-        create_policy_generator,
-        create_policy_validator,
         create_gitops_manager,
         create_policy_agent,
-        PolicyConfig,
+        create_policy_generator,
+        create_policy_validator,
+        create_traffic_analyzer,
     )
 
     config = create_config(mock_mode=True)

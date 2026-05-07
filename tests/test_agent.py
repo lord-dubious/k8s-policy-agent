@@ -1,18 +1,16 @@
 """Tests for policy agent orchestrator."""
 
 import pytest
-from typing import Any
 
-from k8s_policy_agent.models import (
-    PolicyConfig,
-    NetworkPolicySpec,
-    TrafficObservation,
-    PolicyValidationResult,
-    PolicyEvaluation,
-    AgentStats,
-    Protocol,
-)
 from k8s_policy_agent.agent import PolicyAgent, create_policy_agent
+from k8s_policy_agent.models import (
+    AgentStats,
+    NetworkPolicySpec,
+    PolicyConfig,
+    PolicyEvaluation,
+    PolicyValidationResult,
+    TrafficObservation,
+)
 
 
 class TestPolicyAgentInit:

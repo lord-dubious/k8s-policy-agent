@@ -2,25 +2,24 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 import structlog
 
+from k8s_policy_agent.gitops import GitOpsManager
 from k8s_policy_agent.models import (
-    PolicyConfig,
+    AgentStats,
+    GitOpsCommit,
     NetworkPolicySpec,
-    PolicyValidationResult,
+    PolicyConfig,
     PolicyEvaluation,
     PolicyGenerationRequest,
+    PolicyValidationResult,
     TrafficObservation,
-    GitOpsCommit,
-    AgentStats,
 )
-from k8s_policy_agent.traffic_analyzer import TrafficAnalyzer
 from k8s_policy_agent.policy_generator import PolicyGenerator
 from k8s_policy_agent.policy_validator import PolicyValidator
-from k8s_policy_agent.gitops import GitOpsManager
+from k8s_policy_agent.traffic_analyzer import TrafficAnalyzer
 
 logger = structlog.get_logger()
 
