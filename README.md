@@ -1,14 +1,43 @@
 # Kubernetes Policy Agent
 
-AI-powered Kubernetes NetworkPolicy generator and validator using Gemini and DeepEval-style evaluation.
+Kubernetes NetworkPolicy generator and validator with optional Gemini-assisted generation and deterministic mock behavior for demos and tests.
 
 ## Features
 
-- **Traffic Analysis**: Analyze CNI (Cilium/Calico) logs to understand actual traffic patterns
-- **AI Policy Generation**: Use Gemini 3.0 Flash to generate least-privilege NetworkPolicies
+- **Traffic Analysis**: Analyze CNI (Cilium/Calico) logs to understand observed traffic patterns
+- **Policy Generation**: Generate NetworkPolicies from observed traffic using Gemini when configured, or deterministic mock behavior for local demos/tests
 - **Policy Validation**: Validate policies against security best practices
 - **DeepEval Scoring**: Evaluate policies on security, completeness, and least-privilege metrics
-- **GitOps Integration**: Automatically commit and push policies to Git repositories
+- **GitOps Integration**: Write policy manifests to a Git repository workflow with explicit mock and dry-run boundaries
+
+## What Works Today
+
+- Generates Kubernetes `NetworkPolicy` manifests from policy requests and observed traffic data.
+- Adds DNS egress rules in generated policies so common cluster name resolution remains visible.
+- Validates generated or provided policies for common safety checks and recommendations.
+- Evaluates policies with local scoring dimensions for security, completeness, and least privilege.
+- Can write generated policy YAML into a Git-backed policy directory and report commit metadata.
+
+## Current Limits
+
+- Generated policies are starting points and require human review before production use.
+- Traffic-derived policies only reflect the observations provided to the tool; missing traffic can produce incomplete allow rules.
+- Gemini responses can be unavailable, malformed, or network-dependent. When that happens, generation falls back to deterministic mock behavior and marks the policy as degraded in metadata.
+- The evaluator is a project-local scoring implementation; it is not a substitute for cluster-specific security review or admission testing.
+
+## Dependency Behavior
+
+- Gemini generation requires `K8S_POLICY_GEMINI_API_KEY`, the configured model name, and network access to Google Generative AI APIs.
+- Mock mode is deterministic demo/test behavior. It does not call Gemini and should not be represented as externally inferred policy intelligence.
+- Generated manifests include annotations for generation source, degradation status, model name when used, and generation errors when fallback was required.
+- Kubernetes and Git operations depend on local credentials/configuration and should be validated in the target environment.
+
+## GitOps/Safety Boundaries
+
+- Dry-run mode is intended to make remote side effects explicit; pushes are skipped when dry-run is enabled.
+- Mock GitOps mode uses a temporary local repository and labels returned commit metadata as mock behavior.
+- Real GitOps push/apply flows need explicit care: review generated YAML, confirm the target branch/repository, and understand downstream controllers such as Argo CD or Flux before pushing.
+- This project does not automatically prove a policy is safe for a live cluster. Treat generated policies as review artifacts.
 
 ## Installation
 
@@ -38,7 +67,7 @@ k8s-policy analyze production --labels app=backend --mock
 ### Generate Policies
 
 ```bash
-# Generate policy based on traffic analysis
+# Generate policy based on traffic analysis using deterministic mock behavior
 k8s-policy generate --mock
 
 # Generate with pod labels
@@ -79,7 +108,7 @@ k8s-policy evaluate policy.yaml
 # Run full pipeline: analyze -> generate -> validate
 k8s-policy pipeline default --mock
 
-# With auto-apply to GitOps repo
+# Exercise the GitOps path without remote push/apply side effects
 k8s-policy pipeline default --apply --mock --dry-run
 ```
 
@@ -121,7 +150,7 @@ async def main():
     )
     agent = create_policy_agent(config)
     
-    # Analyze and generate policy
+    # Analyze and generate policy; review before applying to a cluster
     policy = await agent.analyze_and_generate(
         namespace="production",
         pod_labels={"app": "backend"},
@@ -165,7 +194,7 @@ The evaluator runs these security tests on each policy:
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
 │  │   Traffic    │  │   Policy     │  │   Policy     │          │
 │  │   Analyzer   │─▶│   Generator  │─▶│   Validator  │          │
-│  │              │  │   (Gemini)   │  │  (DeepEval)  │          │
+│  │              │  │Gemini/Mock   │  │   Scoring    │          │
 │  └──────────────┘  └──────────────┘  └──────────────┘          │
 │                                              │                   │
 │                                              ▼                   │

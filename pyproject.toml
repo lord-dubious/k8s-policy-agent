@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "k8s-policy-agent"
 version = "0.1.0"
-description = "AI-powered Kubernetes NetworkPolicy generator and validator using Gemini and DeepEval"
+description = "Kubernetes NetworkPolicy generator and validator with optional Gemini-assisted generation"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
