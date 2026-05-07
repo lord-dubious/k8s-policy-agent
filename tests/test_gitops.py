@@ -1,11 +1,9 @@
 """Tests for GitOps manager."""
 
 import pytest
-import tempfile
-from pathlib import Path
 
-from k8s_policy_agent.models import PolicyConfig, NetworkPolicySpec
 from k8s_policy_agent.gitops import GitOpsManager, create_gitops_manager
+from k8s_policy_agent.models import NetworkPolicySpec, PolicyConfig
 
 
 class TestGitOpsManagerInit:
@@ -75,7 +73,7 @@ class TestCloneRepo:
     async def test_clone_repo_initializes_git(self, mock_config: PolicyConfig) -> None:
         """Test cloning initializes git repository."""
         manager = GitOpsManager(mock_config)
-        work_dir = await manager.clone_repo()
+        await manager.clone_repo()
 
         assert manager._repo is not None
         assert manager._work_dir is not None
@@ -101,6 +99,9 @@ class TestCommitPolicy:
         assert commit.commit_hash is not None
         assert len(commit.commit_hash) > 0
         assert sample_network_policy.name in commit.policy_names
+        assert commit.operation_mode == "mock"
+        assert commit.mock_mode is True
+        assert commit.dry_run is True
 
         manager.cleanup()
 
@@ -198,8 +199,33 @@ class TestPush:
         result = await manager.push()
 
         assert result is True
+        assert manager.last_operation_mode == "mock"
+        assert manager.last_failure_reason == ""
 
         manager.cleanup()
+
+    @pytest.mark.asyncio
+    async def test_push_dry_run_skips_remote(self, mock_config: PolicyConfig) -> None:
+        """Test dry-run push is visibly skipped without remote side effects."""
+        config = mock_config.model_copy(update={"mock_mode": False, "dry_run": True})
+        manager = GitOpsManager(config)
+
+        result = await manager.push()
+
+        assert result is True
+        assert manager.last_operation_mode == "dry_run"
+        assert manager.last_failure_reason == ""
+
+    @pytest.mark.asyncio
+    async def test_push_without_repo_records_failure(self, mock_config: PolicyConfig) -> None:
+        """Test push failure state is exposed when no repository is initialized."""
+        config = mock_config.model_copy(update={"mock_mode": False, "dry_run": False})
+        manager = GitOpsManager(config)
+
+        with pytest.raises(RuntimeError, match="Repository not initialized"):
+            await manager.push()
+
+        assert manager.last_failure_reason == "Repository not initialized"
 
 
 class TestCreateBranch:
@@ -384,6 +410,10 @@ class TestGetStats:
         assert stats["initialized"] is False
         assert "repo_url" in stats
         assert "branch" in stats
+        assert stats["operation_mode"] == "mock"
+        assert stats["dry_run"] is True
+        assert stats["mock_mode"] is True
+        assert stats["last_failure_reason"] == ""
 
     @pytest.mark.asyncio
     async def test_get_stats_after_init(self, mock_config: PolicyConfig) -> None:
