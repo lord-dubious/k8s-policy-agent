@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 import structlog
 
 from k8s_policy_agent.models import (
     PolicyConfig,
+    Protocol,
+    TrafficDirection,
     TrafficObservation,
     TrafficRule,
-    TrafficDirection,
-    Protocol,
 )
 
 logger = structlog.get_logger()
@@ -270,7 +269,7 @@ class TrafficAnalyzer:
         """
         return {
             "total_observations": len(self._observations),
-            "namespaces_analyzed": len(set(o.source_namespace for o in self._observations)),
+            "namespaces_analyzed": len({o.source_namespace for o in self._observations}),
         }
 
 
