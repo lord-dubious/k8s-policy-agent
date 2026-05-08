@@ -2,6 +2,11 @@
 
 Kubernetes NetworkPolicy generator and validator with optional Gemini-assisted generation and deterministic mock behavior for demos and tests.
 
+## Portfolio Review
+
+- [Architecture](docs/ARCHITECTURE.md) - component boundaries, data flow, external dependencies, and degraded-mode behavior.
+- [Demo Guide](docs/DEMO.md) - safe local walkthrough commands and recruiter-facing talking points.
+
 ## Features
 
 - **Traffic Analysis**: Analyze CNI (Cilium/Calico) logs to understand observed traffic patterns
