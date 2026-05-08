@@ -14,12 +14,50 @@ This document is written for reviewers who want to understand how the project is
 6. Manifest review
 
 ```mermaid
-flowchart LR
-    A1[Traffic logs or policy request] --> A2[Traffic analyzer]
-    A2[Traffic analyzer] --> A3[Policy generator]
-    A3[Policy generator] --> A4[Policy validator/evaluator]
-    A4[Policy validator/evaluator] --> A5[GitOps writer with mock/dry-run/real modes]
-    A5[GitOps writer with mock/dry-run/real modes] --> A6[Manifest review]
+flowchart TB
+    classDef input fill:#ecfeff,stroke:#0891b2,stroke-width:2px,color:#164e63
+    classDef core fill:#eef2ff,stroke:#4f46e5,stroke-width:2px,color:#312e81
+    classDef external fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#7c2d12
+    classDef metadata fill:#f0fdf4,stroke:#16a34a,stroke-width:2px,color:#14532d
+    classDef review fill:#fef2f2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d
+
+    Request[/Policy request or traffic logs/]:::input
+    Reviewer[/Platform engineer review/]:::review
+
+    subgraph Observation["Traffic Observation"]
+        Parser[Traffic analyzer]:::core
+        Flows[Observed service flows]:::metadata
+    end
+
+    subgraph Generation["Policy Drafting"]
+        Generator[NetworkPolicy generator]:::core
+        Gemini{{Gemini API optional}}:::external
+        Mock[Deterministic mock policy]:::metadata
+        Metadata[Generation metadata and annotations]:::metadata
+    end
+
+    subgraph Validation["Safety Checks"]
+        Validator[Policy validator]:::core
+        Evaluator[Security and least-privilege scoring]:::core
+    end
+
+    subgraph GitOps["GitOps Boundary"]
+        Writer[Policy file writer]:::core
+        Git[(Policy repository)]:::external
+        Mode[Mock dry-run or real operation state]:::metadata
+    end
+
+    Request --> Parser --> Flows --> Generator
+    Generator <-->|optional model assist| Gemini
+    Generator -. unavailable or malformed .-> Mock
+    Generator --> Metadata
+    Generator --> Validator --> Evaluator
+    Evaluator --> Reviewer
+    Metadata --> Reviewer
+    Reviewer -->|approved manifest only| Writer
+    Writer --> Mode
+    Writer <-->|real mode only| Git
+    Mode --> Reviewer
 ```
 
 ## Main Components
