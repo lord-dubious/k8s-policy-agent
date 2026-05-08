@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kubernetes Policy Agent CLI Showcase</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b1020;
+    --panel: #111827;
+    --panel-2: #172033;
+    --text: #e5e7eb;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --accent-2: #22c55e;
+    --border: rgba(148, 163, 184, 0.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    width: 1280px;
+    min-height: 760px;
+    background:
+      radial-gradient(circle at 10% 15%, rgba(56, 189, 248, 0.22), transparent 30%),
+      radial-gradient(circle at 85% 20%, rgba(34, 197, 94, 0.18), transparent 28%),
+      linear-gradient(135deg, #020617 0%, var(--bg) 48%, #111827 100%);
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--text);
+    padding: 56px;
+  }
+  .frame {
+    border: 1px solid var(--border);
+    background: rgba(15, 23, 42, 0.86);
+    box-shadow: 0 28px 100px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    border-radius: 28px;
+    overflow: hidden;
+  }
+  .hero {
+    display: flex;
+    justify-content: space-between;
+    gap: 32px;
+    padding: 34px 38px 26px;
+    background: linear-gradient(90deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.75));
+    border-bottom: 1px solid var(--border);
+  }
+  .eyebrow {
+    color: var(--accent);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 42px;
+    letter-spacing: -0.035em;
+    line-height: 1;
+  }
+  .caption {
+    margin-top: 14px;
+    color: var(--muted);
+    font-size: 19px;
+    line-height: 1.45;
+    max-width: 780px;
+  }
+  .badge {
+    align-self: flex-start;
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    color: #bae6fd;
+    background: rgba(14, 165, 233, 0.12);
+    border-radius: 999px;
+    padding: 10px 16px;
+    font-size: 15px;
+    white-space: nowrap;
+  }
+  .terminal {
+    margin: 34px 38px 40px;
+    border-radius: 22px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: #020617;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    overflow: hidden;
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    background: var(--panel-2);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  }
+  .dot { width: 12px; height: 12px; border-radius: 999px; display: inline-block; }
+  .red { background: #fb7185; } .yellow { background: #facc15; } .green { background: #4ade80; }
+  .cmd {
+    margin-left: 12px;
+    color: #cbd5e1;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 15px;
+  }
+  pre {
+    margin: 0;
+    padding: 26px 30px 32px;
+    color: #dbeafe;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 17px;
+    line-height: 1.42;
+    white-space: pre-wrap;
+  }
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 14px;
+    padding: 0 38px 34px;
+  }
+  .footer strong { color: var(--accent-2); }
+</style>
+</head>
+<body>
+  <section class="frame">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">Portfolio CLI Surface</div>
+        <h1>Kubernetes Policy Agent</h1>
+        <div class="caption">NetworkPolicy generation, validation, evaluation, and GitOps workflow</div>
+      </div>
+      <div class="badge">actual local help output</div>
+    </header>
+    <div class="terminal">
+      <div class="bar"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span><span class="cmd">$ k8s-policy --help</span></div>
+      <pre> Usage: k8s-policy [OPTIONS] COMMAND [ARGS]...
+
+ Kubernetes NetworkPolicy generator and validator
+
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ analyze   Analyze traffic patterns in a namespace.                           │
+│ generate  Generate a NetworkPolicy based on traffic analysis.                │
+│ validate  Validate a NetworkPolicy YAML file.                                │
+│ evaluate  Evaluate a NetworkPolicy using DeepEval-style metrics.             │
+│ apply     Apply a NetworkPolicy via GitOps.                                  │
+│ pipeline  Run the full pipeline: analyze -&gt; generate -&gt; validate -&gt;          │
+│           (optionally) apply.                                                │
+│ stats     Show agent statistics.                                             │
+│ version   Show version information.                                          │
+╰──────────────────────────────────────────────────────────────────────────────╯</pre>
+    </div>
+    <div class="footer"><span>Generated from a real local command.</span><span><strong>Readable boundaries</strong> over hype.</span></div>
+  </section>
+</body>
+</html>
