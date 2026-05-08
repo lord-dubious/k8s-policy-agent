@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field, ConfigDict
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class TrafficDirection(str, Enum):
+class TrafficDirection(StrEnum):
     """Network traffic direction."""
 
     INGRESS = "ingress"
@@ -19,14 +19,14 @@ class TrafficDirection(str, Enum):
     BOTH = "both"
 
 
-class PolicyAction(str, Enum):
+class PolicyAction(StrEnum):
     """Policy action type."""
 
     ALLOW = "allow"
     DENY = "deny"
 
 
-class Protocol(str, Enum):
+class Protocol(StrEnum):
     """Network protocol."""
 
     TCP = "TCP"
@@ -34,10 +34,36 @@ class Protocol(str, Enum):
     SCTP = "SCTP"
 
 
+class PolicyGenerationSource(StrEnum):
+    """Source used to generate a NetworkPolicy."""
+
+    GEMINI = "gemini"
+    MOCK = "mock"
+    FALLBACK = "fallback"
+    MANUAL = "manual"
+
+
+class PolicyGenerationMetadata(BaseModel):
+    """Metadata describing how a NetworkPolicy was generated."""
+
+    model_config = ConfigDict(frozen=True)
+
+    source: PolicyGenerationSource = Field(
+        default=PolicyGenerationSource.MANUAL,
+        description="Generation source used for this policy",
+    )
+    degraded: bool = Field(
+        default=False,
+        description="Whether generation used degraded fallback behavior",
+    )
+    model: str = Field(default="", description="External model name, when used")
+    error: str = Field(default="", description="Generation error that caused degradation")
+
+
 class PolicyConfig(BaseSettings):
     """Configuration for the Kubernetes Policy Agent."""
 
-    model_config = ConfigDict(
+    model_config = SettingsConfigDict(
         env_prefix="K8S_POLICY_",
         env_file=".env",
         extra="ignore",
@@ -176,10 +202,14 @@ class NetworkPolicySpec(BaseModel):
     # Metadata
     description: str = Field(default="", description="Policy description")
     generated_at: datetime = Field(default_factory=datetime.now, description="Generation time")
+    generation: PolicyGenerationMetadata = Field(
+        default_factory=PolicyGenerationMetadata,
+        description="Generation source and degradation metadata",
+    )
 
     def to_k8s_manifest(self) -> dict[str, Any]:
         """Convert to Kubernetes manifest format."""
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "networking.k8s.io/v1",
             "kind": "NetworkPolicy",
             "metadata": {
@@ -191,6 +221,8 @@ class NetworkPolicySpec(BaseModel):
                 "annotations": {
                     "description": self.description,
                     "generated-at": self.generated_at.isoformat(),
+                    "generation-source": self.generation.source.value,
+                    "generation-degraded": str(self.generation.degraded).lower(),
                 },
             },
             "spec": {
@@ -200,6 +232,12 @@ class NetworkPolicySpec(BaseModel):
                 "policyTypes": self.policy_types,
             },
         }
+
+        if self.generation.model:
+            manifest["metadata"]["annotations"]["generation-model"] = self.generation.model
+
+        if self.generation.error:
+            manifest["metadata"]["annotations"]["generation-error"] = self.generation.error
 
         if self.ingress_rules:
             manifest["spec"]["ingress"] = [
@@ -248,9 +286,10 @@ class NetworkPolicySpec(BaseModel):
             result["namespaceSelector"] = {"matchLabels": peer.namespace_selector.match_labels}
 
         if peer.ip_block:
-            result["ipBlock"] = {"cidr": peer.ip_block.cidr}
+            ip_block: dict[str, str | list[str]] = {"cidr": peer.ip_block.cidr}
             if peer.ip_block.except_cidrs:
-                result["ipBlock"]["except"] = peer.ip_block.except_cidrs
+                ip_block["except"] = peer.ip_block.except_cidrs
+            result["ipBlock"] = ip_block
 
         return result
 
@@ -350,6 +389,10 @@ class GitOpsCommit(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now, description="Commit time")
     files_changed: list[str] = Field(default_factory=list, description="Changed files")
     policy_names: list[str] = Field(default_factory=list, description="Affected policies")
+    operation_mode: str = Field(default="real", description="GitOps operation mode")
+    dry_run: bool = Field(default=False, description="Whether dry-run mode was enabled")
+    mock_mode: bool = Field(default=False, description="Whether mock mode was enabled")
+    failure_reason: str = Field(default="", description="Failure context, if operation failed")
 
 
 class AgentStats(BaseModel):

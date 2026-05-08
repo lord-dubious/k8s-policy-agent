@@ -1,9 +1,10 @@
 """Tests for traffic analyzer."""
 
-import pytest
 from typing import Any
 
-from k8s_policy_agent.models import PolicyConfig, Protocol, TrafficObservation
+import pytest
+
+from k8s_policy_agent.models import PolicyConfig, TrafficObservation
 from k8s_policy_agent.traffic_analyzer import TrafficAnalyzer, create_traffic_analyzer
 
 

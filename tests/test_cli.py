@@ -1,14 +1,11 @@
 """Tests for CLI interface."""
 
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 import tempfile
+from pathlib import Path
 
 from typer.testing import CliRunner
 
 from k8s_policy_agent.cli import app
-
 
 runner = CliRunner()
 

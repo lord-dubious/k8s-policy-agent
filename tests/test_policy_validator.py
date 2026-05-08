@@ -1,25 +1,21 @@
 """Tests for policy validator."""
 
-import pytest
-from typing import Any
-
 from k8s_policy_agent.models import (
-    PolicyConfig,
+    EgressRule,
+    NamespaceSelector,
+    NetworkPeer,
     NetworkPolicySpec,
     PodSelector,
-    IngressRule,
-    EgressRule,
-    NetworkPeer,
-    PortSpec,
-    NamespaceSelector,
-    Protocol,
-    PolicyValidationResult,
+    PolicyConfig,
     PolicyEvaluation,
+    PolicyValidationResult,
+    PortSpec,
+    Protocol,
 )
 from k8s_policy_agent.policy_validator import (
+    SECURITY_RULES,
     PolicyValidator,
     create_policy_validator,
-    SECURITY_RULES,
 )
 
 

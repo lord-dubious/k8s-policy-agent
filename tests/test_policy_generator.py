@@ -1,14 +1,13 @@
 """Tests for policy generator."""
 
 import pytest
-from typing import Any
 
 from k8s_policy_agent.models import (
-    PolicyConfig,
     NetworkPolicySpec,
+    PolicyConfig,
     PolicyGenerationRequest,
+    PolicyGenerationSource,
     TrafficObservation,
-    Protocol,
 )
 from k8s_policy_agent.policy_generator import PolicyGenerator, create_policy_generator
 
@@ -52,6 +51,45 @@ class TestGenerate:
 
         assert isinstance(policy, NetworkPolicySpec)
         assert policy.namespace == "default"
+        assert policy.generation.source == PolicyGenerationSource.MOCK
+        assert policy.generation.degraded is False
+
+    @pytest.mark.asyncio
+    async def test_generate_without_gemini_model_marks_degraded(
+        self,
+        sample_policy_generation_request: PolicyGenerationRequest,
+    ) -> None:
+        """Test missing Gemini configuration falls back with explicit metadata."""
+        config = PolicyConfig(mock_mode=False, gemini_api_key="")
+        generator = PolicyGenerator(config)
+
+        policy = await generator.generate(sample_policy_generation_request)
+
+        assert policy.generation.source == PolicyGenerationSource.FALLBACK
+        assert policy.generation.degraded is True
+        assert policy.generation.model == "gemini-2.0-flash"
+        assert "Gemini model unavailable" in policy.generation.error
+
+    @pytest.mark.asyncio
+    async def test_gemini_generation_error_marks_degraded(
+        self,
+        sample_policy_generation_request: PolicyGenerationRequest,
+    ) -> None:
+        """Test Gemini failures fall back with visible error metadata."""
+
+        class FailingModel:
+            def generate_content(self, prompt: str) -> None:
+                raise RuntimeError("network unavailable")
+
+        config = PolicyConfig(mock_mode=False, gemini_api_key="test-key")
+        generator = PolicyGenerator(config)
+        generator._model = FailingModel()
+
+        policy = await generator.generate(sample_policy_generation_request)
+
+        assert policy.generation.source == PolicyGenerationSource.FALLBACK
+        assert policy.generation.degraded is True
+        assert policy.generation.error == "network unavailable"
 
     @pytest.mark.asyncio
     async def test_generate_includes_dns_egress(
@@ -186,6 +224,7 @@ class TestPolicyToYaml:
 
         assert "name: allow-backend" in yaml_content
         assert "namespace: default" in yaml_content
+        assert "generation-source: manual" in yaml_content
 
     def test_yaml_contains_spec(
         self,

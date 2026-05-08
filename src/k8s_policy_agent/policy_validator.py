@@ -8,10 +8,10 @@ import structlog
 import yaml
 
 from k8s_policy_agent.models import (
-    PolicyConfig,
     NetworkPolicySpec,
-    PolicyValidationResult,
+    PolicyConfig,
     PolicyEvaluation,
+    PolicyValidationResult,
 )
 
 logger = structlog.get_logger()
@@ -345,15 +345,19 @@ class PolicyValidator:
             score += 0.1
 
         # Has ingress rules if Ingress type
-        if "Ingress" in policy.policy_types and policy.ingress_rules:
-            score += 0.2
-        elif "Ingress" not in policy.policy_types:
+        if (
+            "Ingress" in policy.policy_types
+            and policy.ingress_rules
+            or "Ingress" not in policy.policy_types
+        ):
             score += 0.2
 
         # Has egress rules if Egress type
-        if "Egress" in policy.policy_types and policy.egress_rules:
-            score += 0.2
-        elif "Egress" not in policy.policy_types:
+        if (
+            "Egress" in policy.policy_types
+            and policy.egress_rules
+            or "Egress" not in policy.policy_types
+        ):
             score += 0.2
 
         # Has description
@@ -388,14 +392,14 @@ class PolicyValidator:
         specific_peers = 0
         total_peers = 0
 
-        for rule in policy.ingress_rules:
-            for peer in rule.from_peers:
+        for ingress_rule in policy.ingress_rules:
+            for peer in ingress_rule.from_peers:
                 total_peers += 1
                 if peer.pod_selector and peer.pod_selector.match_labels:
                     specific_peers += 1
 
-        for rule in policy.egress_rules:
-            for peer in rule.to_peers:
+        for egress_rule in policy.egress_rules:
+            for peer in egress_rule.to_peers:
                 total_peers += 1
                 if peer.pod_selector and peer.pod_selector.match_labels:
                     specific_peers += 1

@@ -1,28 +1,29 @@
 """Tests for data models."""
 
 import pytest
-from datetime import datetime
 
 from k8s_policy_agent.models import (
-    PolicyConfig,
-    TrafficDirection,
-    PolicyAction,
-    Protocol,
-    PortSpec,
-    PodSelector,
-    NamespaceSelector,
-    IPBlock,
-    NetworkPeer,
-    TrafficRule,
-    IngressRule,
-    EgressRule,
-    NetworkPolicySpec,
-    PolicyValidationResult,
-    PolicyEvaluation,
-    TrafficObservation,
-    PolicyGenerationRequest,
-    GitOpsCommit,
     AgentStats,
+    EgressRule,
+    GitOpsCommit,
+    IngressRule,
+    IPBlock,
+    NamespaceSelector,
+    NetworkPeer,
+    NetworkPolicySpec,
+    PodSelector,
+    PolicyAction,
+    PolicyConfig,
+    PolicyEvaluation,
+    PolicyGenerationMetadata,
+    PolicyGenerationRequest,
+    PolicyGenerationSource,
+    PolicyValidationResult,
+    PortSpec,
+    Protocol,
+    TrafficDirection,
+    TrafficObservation,
+    TrafficRule,
     create_config,
 )
 
@@ -90,8 +91,9 @@ class TestPortSpec:
 
     def test_port_spec_frozen(self, sample_port_spec: PortSpec) -> None:
         """Test PortSpec is frozen."""
-        with pytest.raises(Exception):
-            sample_port_spec.port = 9090  # type: ignore
+        frozen_field = "port"
+        with pytest.raises(ValueError):
+            setattr(sample_port_spec, frozen_field, 9090)
 
 
 class TestPodSelector:
@@ -220,8 +222,29 @@ class TestNetworkPolicySpec:
         assert manifest["kind"] == "NetworkPolicy"
         assert manifest["metadata"]["name"] == "allow-backend"
         assert manifest["metadata"]["namespace"] == "default"
+        assert manifest["metadata"]["annotations"]["generation-source"] == "manual"
+        assert manifest["metadata"]["annotations"]["generation-degraded"] == "false"
         assert "podSelector" in manifest["spec"]
         assert "policyTypes" in manifest["spec"]
+
+    def test_policy_manifest_includes_generation_failure_metadata(self) -> None:
+        """Test degraded generation metadata is visible in manifests."""
+        policy = NetworkPolicySpec(
+            name="fallback-policy",
+            generation=PolicyGenerationMetadata(
+                source=PolicyGenerationSource.FALLBACK,
+                degraded=True,
+                model="gemini-2.0-flash",
+                error="Gemini unavailable",
+            ),
+        )
+
+        annotations = policy.to_k8s_manifest()["metadata"]["annotations"]
+
+        assert annotations["generation-source"] == "fallback"
+        assert annotations["generation-degraded"] == "true"
+        assert annotations["generation-model"] == "gemini-2.0-flash"
+        assert annotations["generation-error"] == "Gemini unavailable"
 
     def test_policy_manifest_ingress(self, sample_network_policy: NetworkPolicySpec) -> None:
         """Test manifest ingress rules."""
@@ -350,6 +373,8 @@ class TestGitOpsCommit:
         )
         assert commit.commit_hash == "abc123def456"
         assert len(commit.files_changed) == 1
+        assert commit.operation_mode == "real"
+        assert commit.failure_reason == ""
 
 
 class TestAgentStats:

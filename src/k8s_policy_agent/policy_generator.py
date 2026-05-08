@@ -1,4 +1,4 @@
-"""AI-powered NetworkPolicy generator using Gemini."""
+"""NetworkPolicy generator using Gemini or deterministic mock behavior."""
 
 from __future__ import annotations
 
@@ -11,17 +11,19 @@ import structlog
 import yaml
 
 from k8s_policy_agent.models import (
-    PolicyConfig,
-    NetworkPolicySpec,
-    TrafficObservation,
-    PolicyGenerationRequest,
-    PodSelector,
-    IngressRule,
     EgressRule,
-    NetworkPeer,
-    PortSpec,
+    IngressRule,
     NamespaceSelector,
+    NetworkPeer,
+    NetworkPolicySpec,
+    PodSelector,
+    PolicyConfig,
+    PolicyGenerationMetadata,
+    PolicyGenerationRequest,
+    PolicyGenerationSource,
+    PortSpec,
     Protocol,
+    TrafficObservation,
 )
 
 logger = structlog.get_logger()
@@ -58,7 +60,7 @@ Respond with a JSON object containing:
     "egress_rules": [
         {{
             "to_labels": {{"app": "database"}},
-            "to_namespace": "default", 
+            "to_namespace": "default",
             "ports": [5432]
         }}
     ]
@@ -70,7 +72,7 @@ Respond with only the JSON, no additional text.
 
 
 class PolicyGenerator:
-    """AI-powered NetworkPolicy generator."""
+    """NetworkPolicy generator."""
 
     def __init__(self, config: PolicyConfig) -> None:
         """Initialize the policy generator.
@@ -97,7 +99,7 @@ class PolicyGenerator:
         if self.config.mock_mode:
             return self._generate_mock_policy(request)
 
-        return await self._generate_with_ai(request)
+        return await self._generate_with_gemini(request)
 
     async def generate_from_observations(
         self,
@@ -155,8 +157,8 @@ class PolicyGenerator:
             description=f"Default deny policy for {namespace} namespace",
         )
 
-    async def _generate_with_ai(self, request: PolicyGenerationRequest) -> NetworkPolicySpec:
-        """Use AI to generate the policy.
+    async def _generate_with_gemini(self, request: PolicyGenerationRequest) -> NetworkPolicySpec:
+        """Use Gemini to generate the policy.
 
         Args:
             request: Generation request
@@ -164,10 +166,20 @@ class PolicyGenerator:
         Returns:
             Generated policy
         """
+        if self._model is None:
+            reason = "Gemini model unavailable; configure gemini_api_key or enable mock_mode"
+            logger.warning(
+                "gemini_generation_unavailable",
+                namespace=request.target_namespace,
+                reason=reason,
+            )
+            return self._generate_mock_policy(request, degraded=True, error=reason)
+
         logger.info(
-            "generating_policy_with_ai",
+            "generating_policy_with_gemini",
             namespace=request.target_namespace,
             observations=len(request.traffic_observations),
+            model=self.config.gemini_model,
         )
 
         # Format traffic patterns
@@ -183,11 +195,17 @@ class PolicyGenerator:
             response = self._model.generate_content(prompt)
             policy_data = self._extract_json(response.text)
 
-            return self._build_policy_from_ai(request, policy_data)
+            return self._build_policy_from_gemini(request, policy_data)
 
         except Exception as e:
-            logger.error("ai_generation_error", error=str(e))
-            return self._generate_mock_policy(request)
+            error = str(e)
+            logger.error(
+                "gemini_generation_error",
+                namespace=request.target_namespace,
+                model=self.config.gemini_model,
+                error=error,
+            )
+            return self._generate_mock_policy(request, degraded=True, error=error)
 
     def _format_traffic_patterns(self, observations: list[TrafficObservation]) -> str:
         """Format traffic observations for the prompt.
@@ -209,10 +227,10 @@ class PolicyGenerator:
         return "\n".join(lines) if lines else "No traffic observed"
 
     def _extract_json(self, text: str) -> dict[str, Any]:
-        """Extract JSON from AI response.
+        """Extract JSON from Gemini response.
 
         Args:
-            text: AI response text
+            text: Gemini response text
 
         Returns:
             Parsed JSON
@@ -220,25 +238,29 @@ class PolicyGenerator:
         json_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
         if json_match:
             try:
-                return json.loads(json_match.group(1))
+                parsed = json.loads(json_match.group(1))
+                if isinstance(parsed, dict):
+                    return {str(key): value for key, value in parsed.items()}
             except json.JSONDecodeError:
                 pass
 
         try:
-            return json.loads(text)
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return {str(key): value for key, value in parsed.items()}
         except json.JSONDecodeError:
             pass
 
         return {}
 
-    def _build_policy_from_ai(
+    def _build_policy_from_gemini(
         self, request: PolicyGenerationRequest, data: dict[str, Any]
     ) -> NetworkPolicySpec:
-        """Build policy from AI response.
+        """Build policy from Gemini response.
 
         Args:
             request: Original request
-            data: AI response data
+            data: Gemini response data
 
         Returns:
             NetworkPolicy specification
@@ -310,10 +332,21 @@ class PolicyGenerator:
             ingress_rules=ingress_rules,
             egress_rules=egress_rules,
             description=data.get("description", request.description),
+            generation=PolicyGenerationMetadata(
+                source=PolicyGenerationSource.GEMINI,
+                degraded=False,
+                model=self.config.gemini_model,
+            ),
         )
 
-    def _generate_mock_policy(self, request: PolicyGenerationRequest) -> NetworkPolicySpec:
-        """Generate mock policy for testing.
+    def _generate_mock_policy(
+        self,
+        request: PolicyGenerationRequest,
+        *,
+        degraded: bool = False,
+        error: str = "",
+    ) -> NetworkPolicySpec:
+        """Generate deterministic mock policy for testing and fallback.
 
         Args:
             request: Generation request
@@ -389,7 +422,13 @@ class PolicyGenerator:
             policy_types=["Ingress", "Egress"],
             ingress_rules=ingress_rules,
             egress_rules=egress_rules,
-            description=f"Auto-generated policy for {request.target_pod_labels}",
+            description=f"Generated policy for {request.target_pod_labels}",
+            generation=PolicyGenerationMetadata(
+                source=PolicyGenerationSource.FALLBACK if degraded else PolicyGenerationSource.MOCK,
+                degraded=degraded,
+                model=self.config.gemini_model if degraded else "",
+                error=error,
+            ),
         )
 
     def policy_to_yaml(self, policy: NetworkPolicySpec) -> str:
@@ -402,7 +441,7 @@ class PolicyGenerator:
             YAML string
         """
         manifest = policy.to_k8s_manifest()
-        return yaml.dump(manifest, default_flow_style=False, sort_keys=False)
+        return str(yaml.dump(manifest, default_flow_style=False, sort_keys=False))
 
 
 def create_policy_generator(config: PolicyConfig | None = None) -> PolicyGenerator:

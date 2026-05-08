@@ -14,9 +14,9 @@ from git import Repo
 from git.exc import GitCommandError
 
 from k8s_policy_agent.models import (
-    PolicyConfig,
-    NetworkPolicySpec,
     GitOpsCommit,
+    NetworkPolicySpec,
+    PolicyConfig,
 )
 
 logger = structlog.get_logger()
@@ -35,6 +35,8 @@ class GitOpsManager:
         self._repo: Repo | None = None
         self._work_dir: Path | None = None
         self._temp_dir: str | None = None
+        self.last_failure_reason = ""
+        self.last_operation_mode = self._operation_mode()
 
     @property
     def repo_url(self) -> str:
@@ -58,10 +60,18 @@ class GitOpsManager:
             Path to the cloned repository
         """
         if self.config.mock_mode:
+            self.last_failure_reason = ""
+            self.last_operation_mode = "mock"
             return self._create_mock_repo()
 
         if not self.config.git_repo_url:
-            raise ValueError("Git repository URL not configured")
+            self.last_failure_reason = "Git repository URL not configured"
+            logger.error(
+                "clone_failed",
+                branch=self.config.git_branch,
+                reason=self.last_failure_reason,
+            )
+            raise ValueError(self.last_failure_reason)
 
         self._temp_dir = tempfile.mkdtemp(prefix="k8s-policy-")
         work_dir = Path(self._temp_dir)
@@ -75,10 +85,19 @@ class GitOpsManager:
                 branch=self.config.git_branch,
             )
             self._work_dir = work_dir
+            self.last_failure_reason = ""
+            self.last_operation_mode = self._operation_mode()
             return work_dir
 
         except GitCommandError as e:
-            logger.error("clone_failed", error=str(e))
+            self.last_failure_reason = str(e)
+            logger.error(
+                "clone_failed",
+                url=self.config.git_repo_url,
+                branch=self.config.git_branch,
+                path=str(work_dir),
+                error=self.last_failure_reason,
+            )
             raise
 
     def _create_mock_repo(self) -> Path:
@@ -91,7 +110,10 @@ class GitOpsManager:
         work_dir = Path(self._temp_dir)
 
         # Initialize git repo
-        self._repo = Repo.init(work_dir)
+        repo = Repo.init(work_dir)
+        self._repo = repo
+        self.last_failure_reason = ""
+        self.last_operation_mode = "mock"
 
         # Create policies directory
         policies_dir = work_dir / self.config.git_policies_path
@@ -101,8 +123,8 @@ class GitOpsManager:
         readme_path = work_dir / "README.md"
         readme_path.write_text("# Network Policies\n\nManaged by k8s-policy-agent.\n")
 
-        self._repo.index.add([str(readme_path)])
-        self._repo.index.commit("Initial commit")
+        repo.index.add([str(readme_path)])
+        repo.index.commit("Initial commit")
 
         self._work_dir = work_dir
         return work_dir
@@ -135,25 +157,45 @@ class GitOpsManager:
         filename = self._generate_filename(policy)
         policy_path = policies_dir / filename
 
-        # Write policy YAML
-        from k8s_policy_agent.policy_generator import PolicyGenerator
+        try:
+            # Write policy YAML
+            from k8s_policy_agent.policy_generator import PolicyGenerator
 
-        generator = PolicyGenerator(self.config)
-        yaml_content = generator.policy_to_yaml(policy)
+            generator = PolicyGenerator(self.config)
+            yaml_content = generator.policy_to_yaml(policy)
 
-        policy_path.write_text(yaml_content)
-        relative_path = str(policy_path.relative_to(self._work_dir))
+            policy_path.write_text(yaml_content)
+            relative_path = str(policy_path.relative_to(self._work_dir))
 
-        logger.info("writing_policy", path=relative_path)
+            logger.info(
+                "writing_policy",
+                path=relative_path,
+                mode=self._operation_mode(),
+                dry_run=self.config.dry_run,
+                mock_mode=self.config.mock_mode,
+            )
 
-        # Stage and commit
-        if self._repo is None:
-            raise RuntimeError("Repository not initialized")
+            # Stage and commit
+            if self._repo is None:
+                raise RuntimeError("Repository not initialized")
 
-        self._repo.index.add([relative_path])
+            self._repo.index.add([relative_path])
 
-        commit_message = message or f"Add/update NetworkPolicy: {policy.name}"
-        commit = self._repo.index.commit(commit_message)
+            commit_message = message or f"Add/update NetworkPolicy: {policy.name}"
+            commit = self._repo.index.commit(commit_message)
+            self.last_failure_reason = ""
+            self.last_operation_mode = self._operation_mode()
+        except (GitCommandError, OSError, RuntimeError) as e:
+            self.last_failure_reason = str(e)
+            self.last_operation_mode = self._operation_mode()
+            logger.error(
+                "commit_policy_failed",
+                policy=policy.name,
+                namespace=policy.namespace,
+                mode=self.last_operation_mode,
+                error=self.last_failure_reason,
+            )
+            raise
 
         return GitOpsCommit(
             commit_hash=commit.hexsha,
@@ -162,6 +204,9 @@ class GitOpsManager:
             timestamp=datetime.now(),
             files_changed=[relative_path],
             policy_names=[policy.name],
+            operation_mode=self._operation_mode(),
+            dry_run=self.config.dry_run,
+            mock_mode=self.config.mock_mode,
         )
 
     async def commit_policies(
@@ -194,24 +239,37 @@ class GitOpsManager:
         files_changed = []
         policy_names = []
 
-        for policy in policies:
-            filename = self._generate_filename(policy)
-            policy_path = policies_dir / filename
+        try:
+            for policy in policies:
+                filename = self._generate_filename(policy)
+                policy_path = policies_dir / filename
 
-            yaml_content = generator.policy_to_yaml(policy)
-            policy_path.write_text(yaml_content)
+                yaml_content = generator.policy_to_yaml(policy)
+                policy_path.write_text(yaml_content)
 
-            relative_path = str(policy_path.relative_to(self._work_dir))
-            files_changed.append(relative_path)
-            policy_names.append(policy.name)
+                relative_path = str(policy_path.relative_to(self._work_dir))
+                files_changed.append(relative_path)
+                policy_names.append(policy.name)
 
-        if self._repo is None:
-            raise RuntimeError("Repository not initialized")
+            if self._repo is None:
+                raise RuntimeError("Repository not initialized")
 
-        self._repo.index.add(files_changed)
+            self._repo.index.add(files_changed)
 
-        commit_message = message or f"Add/update {len(policies)} NetworkPolicies"
-        commit = self._repo.index.commit(commit_message)
+            commit_message = message or f"Add/update {len(policies)} NetworkPolicies"
+            commit = self._repo.index.commit(commit_message)
+            self.last_failure_reason = ""
+            self.last_operation_mode = self._operation_mode()
+        except (GitCommandError, OSError, RuntimeError) as e:
+            self.last_failure_reason = str(e)
+            self.last_operation_mode = self._operation_mode()
+            logger.error(
+                "commit_policies_failed",
+                policies=policy_names,
+                mode=self.last_operation_mode,
+                error=self.last_failure_reason,
+            )
+            raise
 
         return GitOpsCommit(
             commit_hash=commit.hexsha,
@@ -220,6 +278,9 @@ class GitOpsManager:
             timestamp=datetime.now(),
             files_changed=files_changed,
             policy_names=policy_names,
+            operation_mode=self._operation_mode(),
+            dry_run=self.config.dry_run,
+            mock_mode=self.config.mock_mode,
         )
 
     async def push(self, remote: str = "origin") -> bool:
@@ -232,19 +293,42 @@ class GitOpsManager:
             True if push succeeded
         """
         if self.config.mock_mode:
+            self.last_failure_reason = ""
+            self.last_operation_mode = "mock"
             logger.info("mock_push", remote=remote, branch=self.config.git_branch)
             return True
 
+        if self.config.dry_run:
+            self.last_failure_reason = ""
+            self.last_operation_mode = "dry_run"
+            logger.info(
+                "dry_run_push_skipped",
+                remote=remote,
+                branch=self.config.git_branch,
+                reason="dry-run mode does not push to remotes",
+            )
+            return True
+
         if self._repo is None:
-            raise RuntimeError("Repository not initialized")
+            self.last_failure_reason = "Repository not initialized"
+            logger.error("push_failed", remote=remote, reason=self.last_failure_reason)
+            raise RuntimeError(self.last_failure_reason)
 
         try:
             logger.info("pushing_to_remote", remote=remote, branch=self.config.git_branch)
             self._repo.remote(remote).push(self.config.git_branch)
+            self.last_failure_reason = ""
+            self.last_operation_mode = "real"
             return True
 
         except GitCommandError as e:
-            logger.error("push_failed", error=str(e))
+            self.last_failure_reason = str(e)
+            logger.error(
+                "push_failed",
+                remote=remote,
+                branch=self.config.git_branch,
+                error=self.last_failure_reason,
+            )
             return False
 
     async def create_branch(self, branch_name: str) -> bool:
@@ -262,11 +346,15 @@ class GitOpsManager:
         try:
             self._repo.create_head(branch_name)
             self._repo.heads[branch_name].checkout()
+            self.last_failure_reason = ""
             logger.info("created_branch", branch=branch_name)
             return True
 
         except GitCommandError as e:
-            logger.error("branch_creation_failed", error=str(e))
+            self.last_failure_reason = str(e)
+            logger.error(
+                "branch_creation_failed", branch=branch_name, error=self.last_failure_reason
+            )
             return False
 
     async def list_policies(self) -> list[str]:
@@ -360,6 +448,14 @@ class GitOpsManager:
         """
         return f"{policy.namespace}-{policy.name}.yaml"
 
+    def _operation_mode(self) -> str:
+        """Return a visible label for the current GitOps mode."""
+        if self.config.mock_mode:
+            return "mock"
+        if self.config.dry_run:
+            return "dry_run"
+        return "real"
+
     def cleanup(self) -> None:
         """Clean up temporary files."""
         if self._temp_dir and os.path.exists(self._temp_dir):
@@ -379,6 +475,10 @@ class GitOpsManager:
             "branch": self.config.git_branch,
             "policies_path": self.config.git_policies_path,
             "initialized": self._repo is not None,
+            "operation_mode": self.last_operation_mode,
+            "dry_run": self.config.dry_run,
+            "mock_mode": self.config.mock_mode,
+            "last_failure_reason": self.last_failure_reason,
         }
 
         if self._repo is not None:

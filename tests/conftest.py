@@ -2,26 +2,24 @@
 
 from __future__ import annotations
 
-import os
-from datetime import datetime
-from typing import Any, Generator
+from typing import Any
 
 import pytest
 
 from k8s_policy_agent.models import (
-    PolicyConfig,
+    EgressRule,
+    IngressRule,
+    NamespaceSelector,
+    NetworkPeer,
     NetworkPolicySpec,
     PodSelector,
-    IngressRule,
-    EgressRule,
-    NetworkPeer,
-    PortSpec,
-    NamespaceSelector,
-    Protocol,
-    TrafficObservation,
+    PolicyConfig,
     PolicyGenerationRequest,
-    TrafficRule,
+    PortSpec,
+    Protocol,
     TrafficDirection,
+    TrafficObservation,
+    TrafficRule,
 )
 
 
